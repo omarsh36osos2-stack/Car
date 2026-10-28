@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#0f172a" id="themeColor" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="وين وقفت سيارتي" />
+<meta name="description" content="احفظ موقع سيارتك بصورة ومؤقت — تطبيق بسيط يعمل بدون إنترنت" />
+<title>وين وقّفت سيارتي 🚗</title>
+
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<link rel="icon" href="icons/icon-192.png" />
+
+<!-- Leaflet (خريطة تفاعلية) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+
+  /* ===== الوضع الليلي (الافتراضي) ===== */
+  :root{
+    --bg1:#1e3a8a; --bg2:#0f172a; --bg3:#020617;
+    --card:#1e293b; --card2:#273449; --border:#2d3b52;
+    --accent:#38bdf8; --accent2:#0ea5e9;
+    --ok:#22c55e; --warn:#f59e0b; --danger:#ef4444;
+    --txt:#f1f5f9; --muted:#94a3b8;
+    --inputBg:#0b1220;
+    --shadow:0 10px 30px rgba(0,0,0,.4);
+    --radius:20px;
+  }
+  /* ===== الوضع النهاري ===== */
+  body.light{
+    --bg1:#bae6fd; --bg2:#e0f2fe; --bg3:#f8fafc;
+    --card:#ffffff; --card2:#f1f5f9; --border:#e2e8f0;
+    --accent:#0284c7; --accent2:#0369a1;
+    --txt:#0f172a; --muted:#64748b;
+    --inputBg:#f8fafc;
+    --shadow:0 10px 30px rgba(0,0,0,.08);
+  }
+
+  body{
+    font-family:'Tajawal',system-ui,sans-serif;
+    background:radial-gradient(circle at 20% 0%,var(--bg1) 0%,var(--bg2) 45%,var(--bg3) 100%);
+    color:var(--txt); min-height:100vh;
+    padding:16px; padding-top:calc(16px + env(safe-area-inset-top));
+    padding-bottom:calc(40px + env(safe-area-inset-bottom));
+    transition:background .4s, color .3s;
+  }
+  .wrap{max-width:520px; margin:0 auto;}
+
+  /* Header */
+  header{text-align:center; padding:10px 0 20px; position:relative;}
+  header h1{font-size:1.55rem; font-weight:900; letter-spacing:-.5px;}
+  header h1 span{color:var(--accent);}
+  header p{color:var(--muted); font-size:.82rem; margin-top:6px;}
+  .theme-toggle{
+    position:absolute; top:0; left:0;
+    width:44px; height:44px; border-radius:14px;
+    background:var(--card2); border:1px solid var(--border);
+    color:var(--txt); font-size:1.2rem; cursor:pointer; transition:.2s;
+  }
+  .theme-toggle:active{transform:scale(.9);}
+
+  /* Buttons */
+  .btn{
+    display:flex; align-items:center; justify-content:center; gap:10px;
+    width:100%; padding:18px; border:none; border-radius:var(--radius);
+    font-family:inherit; font-size:1.1rem; font-weight:700; cursor:pointer;
+    transition:.2s; color:#fff;
+  }
+  .btn:active{transform:scale(.97);}
+  .btn-main{
+    background:linear-gradient(135deg,#38bdf8,#0284c7);
+    box-shadow:0 8px 24px rgba(56,189,248,.35);
+    font-size:1.2rem;
+  }
+  body.light .btn-main{color:#fff;}
+  .btn-main.saved{background:linear-gradient(135deg,#22c55e,#15803d); box-shadow:0 8px 24px rgba(34,197,94,.35);}
+  .btn-danger{background:linear-gradient(135deg,#ef4444,#b91c1c); font-size:1rem; padding:14px;}
+  .btn-ghost{background:var(--card2); color:var(--txt); font-size:.92rem; padding:14px; border:1px solid var(--border);}
+  .btn-ghost:hover{border-color:var(--accent);}
+  .row{display:flex; gap:10px; margin-top:10px;}
+  .row .btn{flex:1;}
+
+  /* Cards */
+  .card{
+    background:var(--card);
+    border:1px solid var(--border); border-radius:var(--radius);
+    padding:18px; margin-top:18px;
+    box-shadow:var(--shadow);
+    animation:fadeIn .35s ease;
+  }
+  body.light .card{background:linear-gradient(160deg,#fff,#f8fafc);}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+  .card h2{font-size:1.02rem; margin-bottom:14px; display:flex; align-items:center; gap:8px;}
+
+  /* Empty state */
+  .empty{text-align:center; padding:30px 10px; color:var(--muted);}
+  .empty .ico{font-size:3rem; margin-bottom:10px; opacity:.6;}
+
+  /* Photo */
+  .photo-box{
+    position:relative; width:100%; border-radius:16px; overflow:hidden;
+    background:var(--inputBg); border:1px dashed var(--border); min-height:170px;
+    display:flex; align-items:center; justify-content:center; margin-bottom:12px;
+  }
+  .photo-box img{width:100%; display:block; border-radius:16px;}
+  .photo-box .ph{color:var(--muted); text-align:center; font-size:.9rem;}
+  .photo-box .ph .big{font-size:2.5rem; display:block; margin-bottom:6px;}
+
+  /* Inputs */
+  label{display:block; font-size:.8rem; color:var(--muted); margin-bottom:6px; font-weight:500;}
+  input, textarea{
+    width:100%; padding:13px 14px; border-radius:14px; border:1px solid var(--border);
+    background:var(--inputBg); color:var(--txt); font-family:inherit; font-size:1rem;
+    outline:none; transition:.2s;
+  }
+  input:focus, textarea:focus{border-color:var(--accent); box-shadow:0 0 0 3px rgba(56,189,248,.15);}
+  .field{margin-bottom:12px;}
+
+  /* Timer */
+  .timer{
+    text-align:center; padding:18px; border-radius:16px;
+    background:linear-gradient(135deg,#1e3a8a,#0f172a);
+    border:1px solid #2d4a7a; margin-top:12px;
+  }
+  body.light .timer{background:linear-gradient(135deg,#dbeafe,#eff6ff); border-color:#bfdbfe;}
+  .timer .lbl{font-size:.78rem; color:var(--muted);}
+  .timer .val{font-size:2.6rem; font-weight:900; letter-spacing:2px; font-variant-numeric:tabular-nums; margin:4px 0;}
+  body.light .timer .val{color:#0f172a;}
+  .timer.warn{border-color:var(--warn); background:linear-gradient(135deg,#78350f,#1c1917);}
+  body.light .timer.warn{background:linear-gradient(135deg,#fef3c7,#fffbeb);}
+  .timer.danger{border-color:var(--danger); background:linear-gradient(135deg,#7f1d1d,#1c1917); animation:pulse 1.2s infinite;}
+  body.light .timer.danger{background:linear-gradient(135deg,#fee2e2,#fef2f2);}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.7;}}
+
+  /* Info rows */
+  .info{display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border); font-size:.9rem; gap:10px;}
+  .info:last-child{border-bottom:none;}
+  .info .k{color:var(--muted); white-space:nowrap;}
+  .info .v{font-weight:700; text-align:left; word-break:break-word;}
+
+  /* Map */
+  #map{width:100%; height:220px; border-radius:16px; border:1px solid var(--border); margin-top:12px; z-index:1;}
+
+  /* Share modal */
+  .share-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px;}
+  .share-item{
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+    padding:16px 8px; border-radius:16px; background:var(--card2);
+    border:1px solid var(--border); cursor:pointer; transition:.2s; font-weight:700; font-size:.85rem;
+  }
+  .share-item:hover{border-color:var(--accent); transform:translateY(-2px);}
+  .share-item .ico{font-size:1.8rem;}
+
+  /* Toast */
+  .toast{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(120%);
+    background:var(--card); color:var(--txt); padding:14px 22px; border-radius:16px;
+    font-weight:700; box-shadow:0 10px 30px rgba(0,0,0,.5); transition:.35s; z-index:9999;
+    border:1px solid var(--border); max-width:90vw; text-align:center; font-size:.9rem;
+  }
+  .toast.show{transform:translateX(-50%) translateY(0);}
+  .toast.ok{border-color:var(--ok);} .toast.err{border-color:var(--danger);}
+
+  .hidden{display:none !important;}
+
+  /* Pills */
+  .pills{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;}
+  .pill{padding:9px 16px; border-radius:12px; background:var(--card2); border:1px solid var(--border); font-size:.85rem; cursor:pointer; font-weight:700; transition:.2s; color:var(--txt);}
+  .pill:hover,.pill.active{border-color:var(--accent); color:var(--accent);}
+
+  /* Install banner */
+  .install-banner{
+    position:fixed; bottom:16px; left:16px; right:16px; max-width:520px; margin:0 auto;
+    background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff;
+    padding:14px 18px; border-radius:18px; display:flex; align-items:center; gap:12px;
+    box-shadow:0 12px 30px rgba(0,0,0,.4); z-index:1000;
+    transform:translateY(150%); transition:.4s;
+  }
+  .install-banner.show{transform:translateY(0);}
+  .install-banner .ico{font-size:1.8rem;}
+  .install-banner .txt{flex:1; font-weight:700; font-size:.9rem;}
+  .install-banner .txt small{display:block; font-weight:400; opacity:.85; font-size:.75rem; margin-top:2px;}
+  .install-banner button{
+    background:rgba(255,255,255,.25); border:none; color:#fff;
+    padding:9px 14px; border-radius:12px; font-family:inherit; font-weight:700;
+    cursor:pointer; font-size:.85rem;
+  }
+  .install-banner .close{background:transparent; padding:4px 8px; font-size:1.2rem;}
+
+  footer{text-align:center; color:var(--muted); font-size:.72rem; margin-top:30px; opacity:.7;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <button class="theme-toggle" id="themeToggle" title="تبديل الوضع">🌙</button>
+    <h1>وين وقّفت <span>سيارتي</span> 🚗</h1>
+    <p>احفظ موقع سيارتك بصورة ومؤقت — يعمل بدون إنترنت</p>
+  </header>
+
+  <button class="btn btn-main" id="mainBtn">
+    <span style="font-size:1.5rem">📍</span>
+    <span id="mainBtnText">احفظ موقع السيارة</span>
+  </button>
+
+  <div id="emptyState" class="card empty">
+    <div class="ico">🅿️</div>
+    <p>لا يوجد موقع محفوظ حالياً</p>
+    <p style="font-size:.78rem; margin-top:6px;">اضغط الزر أعلاه لحفظ موقع سيارتك</p>
+  </div>
+
+  <div id="carCard" class="hidden">
+    <div class="photo-box" id="photoBox">
+      <div class="ph"><span class="big">📷</span>لا توجد صورة للمكان</div>
+    </div>
+
+    <div class="info"><span class="k">📍 الإحداثيات</span><span class="v" id="coords">—</span></div>
+    <div class="info"><span class="k">🕒 وقت الحفظ</span><span class="v" id="savedAt">—</span></div>
+    <div class="info" id="noteRow"><span class="k">📝 ملاحظة</span><span class="v" id="noteVal">—</span></div>
+
+    <div id="timerBox" class="timer hidden">
+      <div class="lbl">⏳ الوقت المتبقي للوقوف المدفوع</div>
+      <div class="val" id="timerVal">--:--:--</div>
+      <div class="lbl" id="timerEnd">—</div>
+    </div>
+
+    <div id="map"></div>
+
+    <div class="row">
+      <button class="btn btn-ghost" id="mapsBtn">🗺️ خذني للسيارة</button>
+      <button class="btn btn-ghost" id="shareBtn">📤 مشاركة</button>
+    </div>
+    <div class="row">
+      <button class="btn btn-ghost" id="photoBtn">📷 صورة</button>
+      <button class="btn btn-ghost" id="noteBtn">📝 ملاحظة</button>
+    </div>
+    <div class="row">
+      <button class="btn btn-ghost" id="timerBtn">⏱️ مؤقت</button>
+      <button class="btn btn-ghost" id="exportBtn">💾 نسخة احتياطية</button>
+    </div>
+
+    <button class="btn btn-danger" id="clearBtn" style="margin-top:10px;">🗑️ مسح الموقع</button>
+  </div>
+
+  <input type="file" accept="image/*" capture="environment" id="cameraInput" class="hidden" />
+  <input type="file" accept="application/json" id="importInput" class="hidden" />
+
+  <!-- ملاحظة -->
+  <div id="noteModal" class="card hidden">
+    <h2>📝 أضف ملاحظة</h2>
+    <div class="field">
+      <label>مثال: الطابق الثاني - العمود الأزرق B12</label>
+      <textarea id="noteInput" rows="3" placeholder="اكتب تفاصيل تساعدك على التذكر..."></textarea>
+    </div>
+    <div class="row">
+      <button class="btn btn-ghost" onclick="closeModal('noteModal')">إلغاء</button>
+      <button class="btn btn-main" style="font-size:1rem" id="saveNoteBtn">حفظ</button>
+    </div>
+  </div>
+
+  <!-- مؤقت -->
+  <div id="timerModal" class="card hidden">
+    <h2>⏱️ مؤقت الوقوف المدفوع</h2>
+    <div class="field">
+      <label>اختر مدة الوقوف</label>
+      <div class="pills">
+        <div class="pill" data-min="30">30 دقيقة</div>
+        <div class="pill" data-min="60">ساعة</div>
+        <div class="pill" data-min="120">ساعتان</div>
+        <div class="pill" data-min="180">3 ساعات</div>
+        <div class="pill" data-min="240">4 ساعات</div>
+      </div>
+    </div>
+    <div class="field">
+      <label>أو أدخل عدد الدقائق يدوياً</label>
+      <input type="number" id="customMin" placeholder="مثال: 90" min="1" />
+    </div>
+    <div class="row">
+      <button class="btn btn-ghost" onclick="closeModal('timerModal')">إلغاء</button>
+      <button class="btn btn-main" style="font-size:1rem" id="saveTimerBtn">ابدأ المؤقت</button>
+    </div>
+    <button class="btn btn-danger hidden" id="removeTimerBtn" style="margin-top:10px;">إزالة المؤقت</button>
+  </div>
+
+  <!-- مشاركة -->
+  <div id="shareModal" class="card hidden">
+    <h2>📤 مشاركة موقع السيارة</h2>
+    <div class="share-grid">
+      <div class="share-item" id="shareWhatsapp"><span class="ico">💬</span>واتساب</div>
+      <div class="share-item" id="shareCopy"><span class="ico">🔗</span>نسخ الرابط</div>
+      <div class="share-item" id="shareSystem"><span class="ico">📱</span>مشاركة النظام</div>
+      <div class="share-item" id="shareSms"><span class="ico">✉️</span>رسالة SMS</div>
+    </div>
+    <button class="btn btn-ghost" style="margin-top:12px;" onclick="closeModal('shareModal')">إغلاق</button>
+  </div>
+
+  <footer>🔒 بياناتك محفوظة على جهازك فقط — لا سيرفرات ولا تتبع</footer>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- PWA Install Banner -->
+<div class="install-banner" id="installBanner">
+  <div class="ico">🚗</div>
+  <div class="txt">
+    ثبّت التطبيق على شاشتك
+    <small>وصول أسرع بدون متصفح</small>
+  </div>
+  <button id="installBtn">تثبيت</button>
+  <button class="close" id="installClose">✕</button>
+</div>
+
+<script>
+/* ============================================================
+   تطبيق "وين وقفت سيارتي" — النسخة الاحترافية الكاملة
+   ============================================================ */
+
+const KEY = 'parkedCar_v1';
+const THEME_KEY = 'parkedCarTheme';
+let state = load();
+let timerInterval = null;
+let lastNotified = null;
+let map = null, marker = null;
+let deferredPrompt = null;
+
+/* ---------- أدوات ---------- */
+function load(){
+  try { return JSON.parse(localStorage.getItem(KEY)) || null; }
+  catch(e){ return null; }
+}
+function save(){
+  if(state) localStorage.setItem(KEY, JSON.stringify(state));
+  else localStorage.removeItem(KEY);
+}
+function toast(msg, type=''){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + type;
+  clearTimeout(t._t);
+  t._t = setTimeout(()=> t.className = 'toast ' + type, 3200);
+}
+function openModal(id){ const el = document.getElementById(id); el.classList.remove('hidden'); el.scrollIntoView({behavior:'smooth', block:'center'}); }
+function closeModal(id){ document.getElementById(id).classList.add('hidden'); }
+
+/* ---------- الوضع الليلي/النهاري ---------- */
+function applyTheme(mode){
+  const isLight = mode === 'light';
+  document.body.classList.toggle('light', isLight);
+  document.getElementById('themeToggle').textContent = isLight ? '☀️' : '🌙';
+  document.getElementById('themeColor').setAttribute('content', isLight ? '#e0f2fe' : '#0f172a');
+  localStorage.setItem(THEME_KEY, mode);
+}
+function initTheme(){
+  const saved = localStorage.getItem(THEME_KEY);
+  if(saved){ applyTheme(saved); return; }
+  const hour = new Date().getHours();
+  applyTheme((hour >= 6 && hour < 18) ? 'light' : 'dark');
+}
+document.getElementById('themeToggle').addEventListener('click', ()=>{
+  applyTheme(document.body.classList.contains('light') ? 'dark' : 'light');
+});
+initTheme();
+
+/* ---------- صوت + اهتزاز ---------- */
+function beep(){
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    [0,0.25,0.5].forEach(delay=>{
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = 880; o.type='sine';
+      g.gain.setValueAtTime(0.001, ctx.currentTime+delay);
+      g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime+delay+0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+delay+0.2);
+      o.start(ctx.currentTime+delay); o.stop(ctx.currentTime+delay+0.25);
+    });
+  }catch(e){}
+}
+function vibrate(pattern){
+  if('vibrate' in navigator) navigator.vibrate(pattern);
+}
+
+/* ---------- الموقع ---------- */
+document.getElementById('mainBtn').addEventListener('click', ()=>{
+  if(state){ goToCar(); return; }
+  saveLocation();
+});
+
+function saveLocation(){
+  if(!navigator.geolocation){ toast('جهازك لا يدعم تحديد الموقع','err'); return; }
+  toast('📡 جاري تحديد موقعك...');
+  navigator.geolocation.getCurrentPosition(
+    (pos)=>{
+      state = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+        savedAt: Date.now(),
+        photo: null, note: '',
+        timerEnd: null, timerMinutes: null
+      };
+      save(); lastNotified = null; render();
+      toast('✅ تم حفظ موقع السيارة','ok');
+      beep(); vibrate([100,50,100]);
+    },
+    (err)=>{
+      let msg = 'تعذّر تحديد الموقع';
+      if(err.code===1) msg = '❌ يجب السماح بالوصول للموقع';
+      else if(err.code===3) msg = '⏱️ انتهت مهلة تحديد الموقع';
+      toast(msg,'err');
+    },
+    { enableHighAccuracy:true, timeout:15000, maximumAge:0 }
+  );
+}
+
+/* ---------- الرسم ---------- */
+function render(){
+  const empty = document.getElementById('emptyState');
+  const card  = document.getElementById('carCard');
+  const btn   = document.getElementById('mainBtn');
+  const btnTx = document.getElementById('mainBtnText');
+
+  if(!state){
+    empty.classList.remove('hidden');
+    card.classList.add('hidden');
+    btn.classList.remove('saved');
+    btnTx.textContent = 'احفظ موقع السيارة';
+    if(map){ map.remove(); map = null; marker = null; }
+    return;
+  }
+
+  empty.classList.add('hidden');
+  card.classList.remove('hidden');
+  btn.classList.add('saved');
+  btnTx.textContent = '🗺️ خذني إلى سيارتي';
+
+  document.getElementById('coords').textContent = state.lat.toFixed(5) + ', ' + state.lng.toFixed(5);
+  const d = new Date(state.savedAt);
+  document.getElementById('savedAt').textContent =
+    d.toLocaleDateString('ar', {day:'numeric',month:'long'}) + ' — ' +
+    d.toLocaleTimeString('ar', {hour:'2-digit',minute:'2-digit'});
+
+  document.getElementById('noteVal').textContent = state.note || '—';
+
+  const pb = document.getElementById('photoBox');
+  pb.innerHTML = state.photo
+    ? '<img src="'+state.photo+'" alt="صورة الموقف">'
+    : '<div class="ph"><span class="big">📷</span>لا توجد صورة للمكان</div>';
+
+  renderTimer();
+  initMap();
+}
+
+/* ---------- الخريطة ---------- */
+function initMap(){
+  if(!state) return;
+  setTimeout(()=>{
+    const el = document.getElementById('map');
+    if(map){
+      map.setView([state.lat, state.lng], 17);
+      marker.setLatLng([state.lat, state.lng]);
+      return;
+    }
+    map = L.map('map', { zoomControl:true, attributionControl:false }).setView([state.lat, state.lng], 17);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19
+    }).addTo(map);
+    const carIcon = L.divIcon({
+      html:'<div style="font-size:30px; line-height:1;">🚗</div>',
+      className:'', iconSize:[30,30], iconAnchor:[15,28]
+    });
+    marker = L.marker([state.lat, state.lng], {icon:carIcon}).addTo(map);
+  }, 100);
+}
+
+/* ---------- المؤقت ---------- */
+function renderTimer(){
+  const box = document.getElementById('timerBox');
+  clearInterval(timerInterval);
+  if(!state || !state.timerEnd){ box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  const end = state.timerEnd;
+
+  function tick(){
+    let diff = end - Date.now();
+    if(diff <= 0){
+      box.className = 'timer danger';
+      document.getElementById('timerVal').textContent = '00:00:00';
+      document.getElementById('timerEnd').textContent = '⏰ انتهى وقت الوقوف!';
+      if(lastNotified !== 'end'){
+        lastNotified = 'end';
+        beep(); vibrate([300,100,300,100,300]);
+        notify('🚗 انتهى وقت الوقوف المدفوع!', 'قد تحتاج لتحريك سيارتك أو تمديد الوقت.');
+        toast('⏰ انتهى وقت الوقوف المدفوع!','err');
+      }
+      return;
+    }
+    const h = Math.floor(diff/3600000);
+    const m = Math.floor((diff%3600000)/60000);
+    const s = Math.floor((diff%60000)/1000);
+    document.getElementById('timerVal').textContent =
+      String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+
+    if(diff <= 5*60*1000){
+      box.className = 'timer danger';
+      document.getElementById('timerEnd').textContent = '⚠️ أقل من 5 دقائق!';
+      if(lastNotified !== '5'){
+        lastNotified = '5'; beep(); vibrate([200,100,200]);
+        notify('⚠️ تنبيه: تبقى 5 دقائق', 'انتهاء وقت الوقوف المدفوع قريباً.');
+        toast('⚠️ تبقى أقل من 5 دقائق','err');
+      }
+    } else if(diff <= 15*60*1000){
+      box.className = 'timer warn';
+      document.getElementById('timerEnd').textContent = '⏳ تبقى أقل من 15 دقيقة';
+      if(lastNotified !== '15'){
+        lastNotified = '15';
+        notify('⏳ تبقى 15 دقيقة', 'تذكير: وقت الوقوف المدفوع يقترب من الانتهاء.');
+      }
+    } else {
+      box.className = 'timer';
+      const endD = new Date(end);
+      document.getElementById('timerEnd').textContent =
+        'ينتهي في ' + endD.toLocaleTimeString('ar',{hour:'2-digit',minute:'2-digit'});
+    }
+  }
+  tick();
+  timerInterval = setInterval(tick, 1000);
+}
+
+/* ---------- إشعارات ---------- */
+function notify(title, body){
+  if(!('Notification' in window)) return;
+  if(Notification.permission === 'granted'){
+    new Notification(title, { body, icon:'icons/icon-192.png', badge:'icons/icon-192.png' });
+  }
+}
+function requestNotifPermission(){
+  if('Notification' in window && Notification.permission === 'default'){
+    Notification.requestPermission();
+  }
+}
+
+/* ---------- خرائط جوجل ---------- */
+function goToCar(){
+  if(!state) return;
+  window.open('https://www.google.com/maps/dir/?api=1&destination='+state.lat+','+state.lng, '_blank');
+}
+document.getElementById('mapsBtn').addEventListener('click', goToCar);
+
+/* ---------- الصورة ---------- */
+document.getElementById('photoBtn').addEventListener('click', ()=>{
+  document.getElementById('cameraInput').click();
+});
+document.getElementById('cameraInput').addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const canvas = document.createElement('canvas');
+      const maxW = 900;
+      const scale = Math.min(1, maxW/img.width);
+      canvas.width = img.width*scale;
+      canvas.height = img.height*scale;
+      canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+      state.photo = canvas.toDataURL('image/jpeg', 0.75);
+      save(); render();
+      toast('📷 تم حفظ الصورة','ok');
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+});
+
+/* ---------- الملاحظة ---------- */
+document.getElementById('noteBtn').addEventListener('click', ()=>{
+  document.getElementById('noteInput').value = state.note || '';
+  openModal('noteModal');
+});
+document.getElementById('saveNoteBtn').addEventListener('click', ()=>{
+  state.note = document.getElementById('noteInput').value.trim();
+  save(); render(); closeModal('noteModal');
+  toast('📝 تم حفظ الملاحظة','ok');
+});
+
+/* ---------- المؤقت ---------- */
+let selectedMin = null;
+document.getElementById('timerBtn').addEventListener('click', ()=>{
+  selectedMin = null;
+  document.querySelectorAll('.pill').forEach(p=>p.classList.remove('active'));
+  document.getElementById('customMin').value = '';
+  document.getElementById('removeTimerBtn').classList.toggle('hidden', !state.timerEnd);
+  openModal('timerModal');
+  requestNotifPermission();
+});
+document.querySelectorAll('.pill').forEach(p=>{
+  p.addEventListener('click', ()=>{
+    document.querySelectorAll('.pill').forEach(x=>x.classList.remove('active'));
+    p.classList.add('active');
+    selectedMin = parseInt(p.dataset.min);
+    document.getElementById('customMin').value = '';
+  });
+});
+document.getElementById('customMin').addEventListener('input', (e)=>{
+  if(e.target.value){
+    selectedMin = null;
+    document.querySelectorAll('.pill').forEach(x=>x.classList.remove('active'));
+  }
+});
+document.getElementById('saveTimerBtn').addEventListener('click', ()=>{
+  const custom = parseInt(document.getElementById('customMin').value);
+  const min = custom > 0 ? custom : selectedMin;
+  if(!min){ toast('اختر مدة أو أدخل عدد دقائق','err'); return; }
+  state.timerMinutes = min;
+  state.timerEnd = Date.now() + min*60000;
+  lastNotified = null;
+  save(); render(); closeModal('timerModal');
+  toast('⏱️ بدأ المؤقت ('+min+' دقيقة)','ok');
+  requestNotifPermission();
+});
+document.getElementById('removeTimerBtn').addEventListener('click', ()=>{
+  state.timerEnd = null; state.timerMinutes = null; lastNotified = null;
+  save(); render(); closeModal('timerModal');
+  toast('تم إزالة المؤقت');
+});
+
+/* ---------- المشاركة ---------- */
+document.getElementById('shareBtn').addEventListener('click', ()=> openModal('shareModal'));
+
+function shareText(){
+  const d = new Date(state.savedAt);
+  const time = d.toLocaleDateString('ar', {day:'numeric',month:'long'}) + ' ' +
+               d.toLocaleTimeString('ar', {hour:'2-digit',minute:'2-digit'});
+  return `🚗 موقع سيارتي:
+` +
+         `📍 https://www.google.com/maps?q=${state.lat},${state.lng}
+` +
+         `🕒 ${time}
+` +
+         (state.note ? `📝 ${state.note}
+` : '') +
+         `
+— من تطبيق "وين وقفت سيارتي"`;
+}
+
+document.getElementById('shareWhatsapp').addEventListener('click', ()=>{
+  window.open('https://wa.me/?text=' + encodeURIComponent(shareText()), '_blank');
+  closeModal('shareModal');
+});
+document.getElementById('shareSms').addEventListener('click', ()=>{
+  window.location.href = 'sms:?body=' + encodeURIComponent(shareText());
+  closeModal('shareModal');
+});
+document.getElementById('shareCopy').addEventListener('click', async ()=>{
+  try{
+    await navigator.clipboard.writeText(shareText());
+    toast('🔗 تم نسخ الرابط','ok');
+  }catch(e){
+    const ta = document.createElement('textarea');
+    ta.value = shareText(); document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    toast('🔗 تم نسخ الرابط','ok');
+  }
+  closeModal('shareModal');
+});
+document.getElementById('shareSystem').addEventListener('click', async ()=>{
+  if(navigator.share){
+    try{
+      await navigator.share({
+        title:'موقع سيارتي',
+        text: shareText(),
+        url: `https://www.google.com/maps?q=${state.lat},${state.lng}`
+      });
+    }catch(e){}
+  } else {
+    toast('متصفحك لا يدعم المشاركة النظامية — استخدم "نسخ الرابط"','err');
+  }
+  closeModal('shareModal');
+});
+
+/* ---------- تصدير/استيراد ---------- */
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  const data = JSON.stringify(state, null, 2);
+  const blob = new Blob([data], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'parked-car-' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('💾 تم تصدير النسخة','ok');
+});
+
+/* ---------- مسح ---------- */
+document.getElementById('clearBtn').addEventListener('click', ()=>{
+  if(!confirm('هل أنت متأكد من مسح الموقع المحفوظ؟')) return;
+  state = null;
+  localStorage.removeItem(KEY);
+  clearInterval(timerInterval);
+  lastNotified = null;
+  render();
+  toast('🗑️ تم مسح الموقع');
+});
+
+/* ---------- PWA ---------- */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById('installBanner').classList.add('show');
+});
+document.getElementById('installBtn').addEventListener('click', async ()=>{
+  if(!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  document.getElementById('installBanner').classList.remove('show');
+});
+document.getElementById('installClose').addEventListener('click', ()=>{
+  document.getElementById('installBanner').classList.remove('show');
+});
+
+/* ---------- تشغيل ---------- */
+render();
+if(state && state.timerEnd) renderTimer();
+</script>
+</body>
+</html>
